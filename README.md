@@ -52,7 +52,7 @@ Compatibility may vary depending on Generator behavior and installation type.
 
 ### 1️⃣ Install the plugin
 
-Copy the plugin folder to:
+Copy the **ProcessRecorder** folder to:
 
 💡 The exact path varies by Photoshop version and installation type, if you don't already have  **Generator** folder, please create one.
 ```bash
