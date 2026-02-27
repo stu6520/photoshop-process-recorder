@@ -50,11 +50,12 @@ C:\Program Files\Adobe\Adobe Photoshop CC\Required\Plug-Ins\Generator\
 ```
 
 Final structure:
+```bash
 Generator/
 └── ProcessRecorder/
     ├── index.js
     └── package.json
-
+```
 Restart Photoshop.
 
 If successful, the Generator log will show:
@@ -100,24 +101,25 @@ This matches the plugin configuration.
 ---
 
 ## 📁 Output Structure
+```bash
 YourChosenFolder/
 └── ArtworkName/
     ├──frame_000001.jpg
     ├──frame_000002.jpg
     └── output.mp4
-
+```
 
 ---
 
 ## ⚙️ Customization
 
 Inside `index.js` you can adjust:
-
+```bash
 THRESHOLD_STROKES // capture frequency
 CAPTURE_SCALE // 1 = full size, 0.5 = half size
 FPS // video frame rate
 CRF value // video quality (lower = better)
-
+```
 
 ---
 
