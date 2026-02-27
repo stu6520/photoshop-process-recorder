@@ -111,6 +111,16 @@ YourChosenFolder/
 
 ---
 
+## No UI / How to confirm it's running
+
+This is a Photoshop Generator plugin. It runs in the background and does not show an in-app UI.
+
+To confirm it is working:
+- On first run, you will be asked to choose an output folder.
+- After drawing a few strokes, frames will appear in the output folder.
+
+---
+
 ## 🙌 Contributing
 
 Improvements, compatibility updates, and workflow enhancements are welcome.
