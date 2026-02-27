@@ -9,20 +9,24 @@ Designed for illustrators, concept artists, and digital painters who want an eff
 ## ✨ Features
 
 • Automatically captures frames while you draw  
-• Saves frames every few strokes to reduce storage usage  
+• Stroke-based capture, auto-pauses capturing when idle  
 • Continues recording when reopening the same PSD  
 • Renames output folder when the PSD is saved or renamed  
-• Exports a high-quality MP4 timelapse when the document is closed  
+• Auto-exports a MP4 timelapse when the document is closed  
 • Avoids duplicate frames to keep videos clean  
-• Optimized for performance on large canvases  
+• Half-size canvas capture (roughly A4 canvas @ 300 DPI: ~80–250 KB per frame) 
 
 ---
 
-## 🖥 Requirements
+## Compatibility
 
-- Adobe Photoshop CC (Generator enabled)  
-- Windows  
-- FFmpeg  
+Tested and verified with:
+
+• Adobe Photoshop CC 2014  
+• Windows 10  
+
+The plugin uses Photoshop Generator and may work on other CC versions.  
+Compatibility may vary depending on Generator behavior and installation type.
 
 ---
 
@@ -34,9 +38,6 @@ Designed for illustrators, concept artists, and digital painters who want an eff
 4. ✔ Enable **Generator**  
 5. Restart Photoshop  
 
-To confirm it is active:
-
-**File → Generate → Image Assets**
 
 ---
 
@@ -45,6 +46,8 @@ To confirm it is active:
 ### 1️⃣ Install the plugin
 
 Copy the plugin folder to:
+
+💡 The exact path varies by Photoshop version and installation type, if you don't already have  **Generator** folder, please create one.
 ```bash
 C:\Program Files\Adobe\Adobe Photoshop CC\Required\Plug-Ins\Generator\
 ```
@@ -55,13 +58,6 @@ Generator/
 └── ProcessRecorder/
     ├── index.js
     └── package.json
-```
-Restart Photoshop.
-
-If successful, the Generator log (C:\Users\**[USERNAME]**\AppData\Roaming\Adobe\Adobe Photoshop CC **20xx**\Generator\logs) will show:
-```bash
-Plugin loaded: process-recorder
-Process Recorder started
 ```
 
 
@@ -111,54 +107,10 @@ YourChosenFolder/
 
 ---
 
-## ⚙️ Customization
-
-Inside `index.js` you can adjust:
-```bash
-THRESHOLD_STROKES // capture frequency
-CAPTURE_SCALE // 1 = full size, 0.5 = half size
-FPS // video frame rate
-CRF value // video quality (lower = better)
-```
-
----
-
-## ⚠️ Known Limitations
-
-- Windows only (folder picker uses PowerShell)
-- Requires Photoshop Generator support
-- Very large documents may produce large frame sets
-
----
-
-## 📜 License
-
-This project is free for **personal and non-commercial use**.
-
-You may:
-
-✔ use the plugin  
-✔ modify it for your workflow or Photoshop version  
-✔ share modified versions  
-
-You may NOT:
-
-✘ sell this software  
-✘ include it in paid products or services  
-✘ use it for commercial purposes  
-
-For commercial licensing inquiries, please contact the author.
-
----
-
 ## 🙌 Contributing
 
 Improvements, compatibility updates, and workflow enhancements are welcome.
 
 If you adapt this plugin for a different Photoshop version or platform, feel free to share your improvements.
 
----
 
-## ⭐ Support
-
-If this tool improves your workflow, consider starring the repository.
