@@ -1,0 +1,7 @@
+{
+  "name": "process-recorder",
+  "version": "1.0.0",
+  "description": "Photoshop Generator plugin to record drawing process and export timelapse MP4",
+  "generator-core-version": "^3.0.0",
+  "main": "index.js"
+}
