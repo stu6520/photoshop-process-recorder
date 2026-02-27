@@ -4,9 +4,11 @@
   <img src="assets/preview.gif" width="300">
 </p>
 
-A lightweight Photoshop Generator plugin that records your drawing process and automatically exports a timelapse video when you close the document.
+A lightweight Photoshop Generator plugin that records your drawing process and automatically exports a timelapse video when you close the file.
 
-Designed for illustrators, concept artists, and digital painters who want an effortless way to capture their workflow.
+It uses minimal RAM, and it's optimised for older setups and legacy Photoshop versions.
+
+Designed for illustrators and digital painters who want an effortless way to capture their workflow.
 
 ---
 
@@ -56,7 +58,10 @@ Copy the plugin folder to:
 ```bash
 C:\Program Files\Adobe\Adobe Photoshop CC\Required\Plug-Ins\Generator\
 ```
-
+or
+```bash
+C:\Program Files\Adobe\Adobe Photoshop CC\Plug-Ins\Generator\
+```
 Final structure:
 ```bash
 Generator/
