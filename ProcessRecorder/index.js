@@ -12,6 +12,7 @@ var FPS = 12;
 // Update if your ffmpeg is elsewhere
 var FFMPEG = "C:\\ffmpeg\\bin\\ffmpeg.exe";
 var configPath = path.join(__dirname, "config.json");
+var FFPROBE = FFMPEG.replace(/ffmpeg\.exe$/i, "ffprobe.exe");
 
 // ---- State ----
 var outputFolder = null;          // user-chosen base folder
@@ -221,44 +222,77 @@ function saveFrame(generator, docId) {
     });
   });
 }
+function probeSize(filePath, cb) {
+  // cb(err, {w,h})  or cb(null, null) if ffprobe missing
+  try {
+    if (!fs.existsSync(FFPROBE) || !fs.existsSync(filePath)) return cb(null, null);
 
+    var cmd =
+      '"' + FFPROBE + '"' +
+      ' -v error -select_streams v:0 -show_entries stream=width,height' +
+      ' -of csv=s=x:p=0 "' + filePath + '"';
+
+    cp.exec(cmd, function (err, stdout) {
+      if (err || !stdout) return cb(null, null);
+
+      var m = String(stdout).trim().match(/^(\d+)x(\d+)$/);
+      if (!m) return cb(null, null);
+
+      cb(null, { w: parseInt(m[1], 10), h: parseInt(m[2], 10) });
+    });
+  } catch (e) {
+    cb(null, null);
+  }
+}
 // ---- Export video ----
 function exportVideo(folder) {
   if (!folder || !fs.existsSync(folder)) return;
 
-  // Confirm frames exist
-  var hasFrames = false;
-  try {
-    var list = fs.readdirSync(folder);
-    for (var i = 0; i < list.length; i++) {
-      if (/^frame_\d{6}\.jpg$/i.test(list[i])) { hasFrames = true; break; }
+  var firstFrame = path.join(folder, "frame_000001.jpg");
+
+  probeSize(firstFrame, function (_err, sz) {
+    // If ffprobe missing/fails, fall back to your simple export
+    if (!sz) {
+      console.log("ffprobe not found/failed; exporting without fixed-size padding.");
+
+      var cmdFallback =
+        '"' + FFMPEG + '"' +
+        ' -y -framerate ' + FPS +
+        ' -start_number 1 -i frame_%06d.jpg' +
+        ' -vf "crop=iw-mod(iw\\,2):ih-mod(ih\\,2)"' +
+        ' -c:v libx264 -preset slow -crf 18 -pix_fmt yuv420p -movflags +faststart' +
+        ' output.mp4';
+
+      return cp.exec(cmdFallback, { cwd: folder }, function (err, stdout, stderr) {
+        if (stdout) console.log(stdout);
+        if (stderr) console.log(stderr);
+        if (err) console.log("Export error:", err);
+        else console.log("Video exported ✔", path.join(folder, "output.mp4"));
+      });
     }
-  } catch (e) { /* ignore */ }
 
-  if (!hasFrames) return;
+    var W = sz.w, H = sz.h;
 
-  console.log("Exporting video:", folder);
+    // keep aspect ratio -> pad to first-frame size -> ensure even dims for H.264
+    var vf =
+      "scale=" + W + ":" + H + ":force_original_aspect_ratio=decrease," +
+      "pad=" + W + ":" + H + ":(ow-iw)/2:(oh-ih)/2," +
+      "crop=iw-mod(iw\\,2):ih-mod(ih\\,2)";
 
-  // Crop by 0 or 1 pixel to ensure even width/height (H.264 yuv420p requirement)
-  var cmd =
-    '"' + FFMPEG + '"' +
-    ' -y' +
-    ' -framerate ' + FPS +
-    ' -start_number 1' +
-    ' -i frame_%06d.jpg' +
-    ' -vf "crop=iw-mod(iw\\,2):ih-mod(ih\\,2)"' +
-    ' -c:v libx264' +
-    ' -preset slow' +
-    ' -crf 18' +
-    ' -pix_fmt yuv420p' +
-    ' -movflags +faststart' +
-    ' output.mp4';
+    var cmd =
+      '"' + FFMPEG + '"' +
+      ' -y -framerate ' + FPS +
+      ' -start_number 1 -i frame_%06d.jpg' +
+      ' -vf "' + vf + '"' +
+      ' -c:v libx264 -preset slow -crf 18 -pix_fmt yuv420p -movflags +faststart' +
+      ' output.mp4';
 
-  cp.exec(cmd, { cwd: folder }, function (err, stdout, stderr) {
-    if (stdout) console.log(stdout);
-    if (stderr) console.log(stderr);
-    if (err) console.log("Export error:", err);
-    else console.log("Video exported ✔", path.join(folder, "output.mp4"));
+    cp.exec(cmd, { cwd: folder }, function (err, stdout, stderr) {
+      if (stdout) console.log(stdout);
+      if (stderr) console.log(stderr);
+      if (err) console.log("Export error:", err);
+      else console.log("Video exported ✔", path.join(folder, "output.mp4"));
+    });
   });
 }
 
