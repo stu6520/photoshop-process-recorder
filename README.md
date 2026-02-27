@@ -58,7 +58,7 @@ Generator/
 ```
 Restart Photoshop.
 
-If successful, the Generator log will show:
+If successful, the Generator log (C:\Users\**[USERNAME]**\AppData\Roaming\Adobe\Adobe Photoshop CC **20xx**\Generator\logs) will show:
 ```bash
 Plugin loaded: process-recorder
 Process Recorder started
