@@ -12,13 +12,14 @@ Designed for illustrators, concept artists, and digital painters who want an eff
 
 ## ✨ Features
 
-• Automatically captures frames while you draw  
-• Stroke-based capture, auto-pauses capturing when idle  
-• Continues recording when reopening the same PSD  
-• Renames output folder when the PSD is saved or renamed  
-• Auto-exports a MP4 timelapse when the document is closed  
-• Avoids duplicate frames to keep videos clean  
-• Half-size canvas capture (roughly A4 canvas @ 300 DPI: ~80–250 KB per frame) 
+- Records the canvas only when you draw (idle time is skipped)
+- Continues recording when you reopen the same PSD
+- Keeps adding to the same timelapse each time you reopen and close the file
+- Renames the output folder if the PSD is saved or renamed
+- Automatically exports an MP4 timelapse when the document is closed
+- Supports recording multiple open documents at the same time
+- Runs quietly in the background with no pop-ups or UI
+- Optional half-size capture to reduce storage use (A4 @ 300 DPI ≈ ~40–250 KB per frame)
 
 ---
 
