@@ -1,5 +1,9 @@
 # Photoshop Process Recorder
 
+<p align="left">
+  <img src="assets/preview.gif" width="300">
+</p>
+
 A Photoshop Generator plugin that records your drawing process and automatically exports a timelapse video when you close the document.
 
 Designed for illustrators, concept artists, and digital painters who want an effortless way to capture their workflow.
