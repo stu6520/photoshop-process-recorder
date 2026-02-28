@@ -21,7 +21,7 @@ Designed for illustrators and digital painters who want an effortless way to cap
 - Renames the output folder if the PSD is saved or renamed
 - Supports recording multiple open files at the same time
 - Runs quietly in the background with no pop-ups or UI
-- Optional half-size capture to reduce storage use (A4 @ 300 DPI ≈ ~40–250 KB per frame)
+- Optional half-size capture to reduce storage use
 
 ---
 
