@@ -4,7 +4,7 @@ var path = require("path");
 var cp = require("child_process");
 
 // ---- Settings ----
-var THRESHOLD_STROKES = 3;
+var THRESHOLD_STROKES = 5;
 var FRAME_JPG_QUALITY = 80; // 0-100
 var CAPTURE_SCALE = 0.5;    // 1.0 = full size, 0.5 = half size
 var FPS = 12;
@@ -12,7 +12,6 @@ var FPS = 12;
 // Update if your ffmpeg is elsewhere
 var FFMPEG = "C:\\ffmpeg\\bin\\ffmpeg.exe";
 var configPath = path.join(__dirname, "config.json");
-var FFPROBE = FFMPEG.replace(/ffmpeg\.exe$/i, "ffprobe.exe");
 
 // ---- State ----
 var outputFolder = null;          // user-chosen base folder
@@ -161,18 +160,20 @@ function getOrCreateDocFolder(generator, docId) {
 
       if (existing !== correctFolder) {
         try {
-          if (!fs.existsSync(correctFolder)) {
+          if (fs.existsSync(correctFolder)) {
+            console.log("Rename skipped: target folder already exists:", correctFolder);
+            // keep using the current folder
+          } else {
             fs.renameSync(existing, correctFolder);
+            docFolders[docId] = correctFolder;
+            existing = correctFolder;
+
+            // update frame index after rename
+            frameIndex[docId] = getMaxFrameIndex(existing);
           }
         } catch (e) {
           console.log("Folder rename error:", e && e.stack ? e.stack : e);
         }
-
-        docFolders[docId] = correctFolder;
-        existing = correctFolder;
-
-        // Re-scan frames in the new location
-        frameIndex[docId] = getMaxFrameIndex(existing);
       }
     }
 
@@ -222,77 +223,44 @@ function saveFrame(generator, docId) {
     });
   });
 }
-function probeSize(filePath, cb) {
-  // cb(err, {w,h})  or cb(null, null) if ffprobe missing
-  try {
-    if (!fs.existsSync(FFPROBE) || !fs.existsSync(filePath)) return cb(null, null);
 
-    var cmd =
-      '"' + FFPROBE + '"' +
-      ' -v error -select_streams v:0 -show_entries stream=width,height' +
-      ' -of csv=s=x:p=0 "' + filePath + '"';
-
-    cp.exec(cmd, function (err, stdout) {
-      if (err || !stdout) return cb(null, null);
-
-      var m = String(stdout).trim().match(/^(\d+)x(\d+)$/);
-      if (!m) return cb(null, null);
-
-      cb(null, { w: parseInt(m[1], 10), h: parseInt(m[2], 10) });
-    });
-  } catch (e) {
-    cb(null, null);
-  }
-}
 // ---- Export video ----
 function exportVideo(folder) {
   if (!folder || !fs.existsSync(folder)) return;
 
-  var firstFrame = path.join(folder, "frame_000001.jpg");
-
-  probeSize(firstFrame, function (_err, sz) {
-    // If ffprobe missing/fails, fall back to your simple export
-    if (!sz) {
-      console.log("ffprobe not found/failed; exporting without fixed-size padding.");
-
-      var cmdFallback =
-        '"' + FFMPEG + '"' +
-        ' -y -framerate ' + FPS +
-        ' -start_number 1 -i frame_%06d.jpg' +
-        ' -vf "crop=iw-mod(iw\\,2):ih-mod(ih\\,2)"' +
-        ' -c:v libx264 -preset slow -crf 18 -pix_fmt yuv420p -movflags +faststart' +
-        ' output.mp4';
-
-      return cp.exec(cmdFallback, { cwd: folder }, function (err, stdout, stderr) {
-        if (stdout) console.log(stdout);
-        if (stderr) console.log(stderr);
-        if (err) console.log("Export error:", err);
-        else console.log("Video exported ✔", path.join(folder, "output.mp4"));
-      });
+  // Confirm frames exist
+  var hasFrames = false;
+  try {
+    var list = fs.readdirSync(folder);
+    for (var i = 0; i < list.length; i++) {
+      if (/^frame_\d{6}\.jpg$/i.test(list[i])) { hasFrames = true; break; }
     }
+  } catch (e) { /* ignore */ }
 
-    var W = sz.w, H = sz.h;
+  if (!hasFrames) return;
 
-    // keep aspect ratio -> pad to first-frame size -> ensure even dims for H.264
-    var vf =
-      "scale=" + W + ":" + H + ":force_original_aspect_ratio=decrease," +
-      "pad=" + W + ":" + H + ":(ow-iw)/2:(oh-ih)/2," +
-      "crop=iw-mod(iw\\,2):ih-mod(ih\\,2)";
+  console.log("Exporting video:", folder);
 
-    var cmd =
-      '"' + FFMPEG + '"' +
-      ' -y -framerate ' + FPS +
-      ' -start_number 1 -i frame_%06d.jpg' +
-      ' -vf "' + vf + '"' +
-      ' -c:v libx264 -preset slow -crf 18 -pix_fmt yuv420p -movflags +faststart' +
-      ' output.mp4';
+  // Crop by 0 or 1 pixel to ensure even width/height (H.264 yuv420p requirement)
+  var cmd =
+    '"' + FFMPEG + '"' +
+    ' -y' +
+    ' -framerate ' + FPS +
+    ' -start_number 1' +
+    ' -i frame_%06d.jpg' +
+    ' -vf "crop=iw-mod(iw\\,2):ih-mod(ih\\,2)"' +
+    ' -c:v libx264' +
+    ' -preset slow' +
+    ' -crf 18' +
+    ' -pix_fmt yuv420p' +
+    ' -movflags +faststart' +
+    ' output.mp4';
 
-    cp.exec(cmd, { cwd: folder }, function (err, stdout, stderr) {
-      if (stdout) console.log(stdout);
-      if (stderr) console.log(stderr);
-      if (err) console.log("Export error:", err);
-      else console.log("Video exported ✔", path.join(folder, "output.mp4"));
-    });
+  cp.exec(cmd, { cwd: folder }, function (err, stdout, stderr) {
+    if (stdout) console.log(stdout);
+    if (stderr) console.log(stderr);
+    if (err) console.log("Export error:", err);
+    else console.log("Video exported ✔", path.join(folder, "output.mp4"));
   });
 }
 
@@ -306,14 +274,15 @@ function init(generator) {
         var docId = evt && (evt.id || evt.documentID || evt.documentId);
         if (!docId) return;
 
-        
-        if (evt.closed === true) {
+        if (evt && evt.closed === true) {
           var folder = docFolders[docId];
           if (folder) exportVideo(folder);
+          return;
+        }
 
-          // cleanup (optional)
-          delete changeCount[docId];
-          delete lastHash[docId];
+        // Rename folder immediately on Save As / rename
+        if (evt && evt.metaDataOnly === true) {
+          getOrCreateDocFolder(generator, docId);
           return;
         }
 
@@ -323,10 +292,9 @@ function init(generator) {
         if (changeCount[docId] < THRESHOLD_STROKES) return;
         changeCount[docId] = 0;
 
-        console.log("Saving frame for doc:", docId);
         saveFrame(generator, docId);
       } catch (e) {
-        console.log("change handler error:", e && e.stack ? e.stack : e);
+        console.log("change handler error:", e);
       }
     }
 
