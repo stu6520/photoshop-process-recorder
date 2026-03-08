@@ -19,6 +19,7 @@ var docFolders = {};              // docId -> absolute folder path
 var frameIndex = {};              // docId -> last written frame number
 var lastHash = {};                // docId -> md5 of last saved pixmap
 var changeCount = {};             // docId -> stroke counter
+var exportingDocs = {};           // docId -> true while ffmpeg export is running
 
 // ---- Helpers ----
 function chooseFolder(callback) {
@@ -89,6 +90,14 @@ function pad(num, size) {
   var s = String(num);
   while (s.length < size) s = "0" + s;
   return s;
+}
+
+function clearDocState(docId) {
+  delete docFolders[docId];
+  delete frameIndex[docId];
+  delete lastHash[docId];
+  delete changeCount[docId];
+  delete exportingDocs[docId];
 }
 
 function getMaxFrameIndex(folder) {
@@ -224,9 +233,21 @@ function saveFrame(generator, docId) {
   });
 }
 
+function exportAndCleanup(docId) {
+  var folder = docFolders[docId];
+  if (!folder || exportingDocs[docId]) return;
+
+  exportingDocs[docId] = true;
+  clearDocState(docId);
+  exportVideo(folder);
+}
+
 // ---- Export video ----
-function exportVideo(folder) {
-  if (!folder || !fs.existsSync(folder)) return;
+function exportVideo(folder, done) {
+  if (!folder || !fs.existsSync(folder)) {
+    if (done) done();
+    return;
+  }
 
   // Confirm frames exist
   var hasFrames = false;
@@ -237,7 +258,10 @@ function exportVideo(folder) {
     }
   } catch (e) { /* ignore */ }
 
-  if (!hasFrames) return;
+  if (!hasFrames) {
+    if (done) done();
+    return;
+  }
 
   console.log("Exporting video:", folder);
 
@@ -264,6 +288,31 @@ function exportVideo(folder) {
   });
 }
 
+function checkClosedDocuments(generator) {
+  if (!generator || typeof generator.getOpenDocumentIDs !== "function") {
+    return Promise.resolve();
+  }
+
+  return generator.getOpenDocumentIDs().then(function (openDocIds) {
+    var stillOpen = {};
+    var i;
+
+    for (i = 0; i < openDocIds.length; i++) {
+      stillOpen[String(openDocIds[i])] = true;
+    }
+
+    var trackedIds = Object.keys(docFolders);
+    for (i = 0; i < trackedIds.length; i++) {
+      if (!stillOpen[trackedIds[i]]) {
+        console.log("Detected closed document:", trackedIds[i]);
+        exportAndCleanup(trackedIds[i]);
+      }
+    }
+  }).catch(function (e) {
+    console.log("getOpenDocumentIDs error:", e && e.stack ? e.stack : e);
+  });
+}
+
 // ---- Plugin entry ----
 function init(generator) {
   console.log("Process Recorder started");
@@ -272,34 +321,50 @@ function init(generator) {
     function onChanged(evt) {
       try {
         var docId = evt && (evt.id || evt.documentID || evt.documentId);
-        if (!docId) return;
+        if (!docId) {
+          checkClosedDocuments(generator);
+          return;
+        }
 
         if (evt && evt.closed === true) {
-          var folder = docFolders[docId];
-          if (folder) exportVideo(folder);
+          exportAndCleanup(docId);
+          checkClosedDocuments(generator);
           return;
         }
 
         // Rename folder immediately on Save As / rename
         if (evt && evt.metaDataOnly === true) {
           getOrCreateDocFolder(generator, docId);
+          checkClosedDocuments(generator);
           return;
         }
 
-        if (!isStrokeLikeEvent(evt)) return;
+        if (!isStrokeLikeEvent(evt)) {
+          checkClosedDocuments(generator);
+          return;
+        }
 
         changeCount[docId] = (changeCount[docId] || 0) + 1;
-        if (changeCount[docId] < THRESHOLD_STROKES) return;
+        if (changeCount[docId] < THRESHOLD_STROKES) {
+          checkClosedDocuments(generator);
+          return;
+        }
         changeCount[docId] = 0;
 
         saveFrame(generator, docId);
       } catch (e) {
         console.log("change handler error:", e);
       }
+
+      checkClosedDocuments(generator);
     }
 
     generator.onPhotoshopEvent("imageChanged", onChanged);
     generator.onPhotoshopEvent("documentChanged", onChanged);
+    generator.onPhotoshopEvent("currentDocumentChanged", function () {
+      checkClosedDocuments(generator);
+    });
+    checkClosedDocuments(generator);
   });
 }
 
