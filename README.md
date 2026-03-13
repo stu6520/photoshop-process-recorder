@@ -28,9 +28,9 @@ Designed for illustrators and digital painters who want an effortless way to cap
 
 Tested and verified with:
 
-• Adobe Photoshop CC 2014 / Adobe Photoshop CC 2026
+• Adobe Photoshop CC 2014 / 2026
 
-• Windows 10 / Windows 11  
+• Windows 10 / 11  
 
 The plugin uses Photoshop Generator and may work on other CC versions.  
 Compatibility may vary depending on Generator behavior and installation type.
@@ -55,13 +55,12 @@ Compatibility may vary depending on Generator behavior and installation type.
 Copy the **ProcessRecorder** folder to:
 
 💡 The exact path varies by Photoshop version and installation type, if you don't already have  **Generator** folder, please create one.
-```bash
-C:\Program Files\Adobe\Adobe Photoshop 20xx\Plug-Ins\Generator\
-```
+
+`C:\Program Files\Adobe\Adobe Photoshop 20xx\Plug-Ins\Generator\`
+
 or
-```bash
-C:\Program Files\Adobe\Adobe Photoshop 20xx\Required\Plug-Ins\Generator\
-```
+
+`C:\Program Files\Adobe\Adobe Photoshop 20xx\Required\Plug-Ins\Generator\`
 
 Final structure:
 ```bash
@@ -85,13 +84,12 @@ Download:
 **ffmpeg-release-essentials.zip**
 
 Extract to:
-```bash
-C:\
-```
+`C:\`
+
 You should have:
-```bash
-C:\ffmpeg\bin\ffmpeg.exe
-```
+
+`C:\ffmpeg\bin\ffmpeg.exe`
+
 This matches the plugin configuration.
 
 
@@ -125,6 +123,60 @@ This is a Photoshop Generator plugin. It runs in the background and does not sho
 To confirm it is working:
 - On first run, you will be asked to choose an output folder.
 - After drawing a few strokes, frames will appear in the output folder.
+
+---
+
+## Customization
+
+You can customize the recorder by editing the settings at the top of `index.js`.
+
+### Main settings
+
+
+- `var THRESHOLD_STROKES = 5;`
+
+  Controls how often a frame is captured.
+  
+  Lower values capture more often and create smoother timelapses, but generate more frames and larger output.
+- `var CAPTURE_SCALE = 0.5;`
+
+  Controls the capture size before frame conversion.
+  
+  `1.0` = full-size capture.
+  
+  `0.5 `= half-size capture.
+  
+  Lower values reduce file size and processing time.
+- `var FPS = 12;`
+  
+  Controls the frame rate of the exported MP4.
+
+  Higher values make the final video play faster/smoother.
+- `var FFMPEG = "C:\\ffmpeg\\bin\\ffmpeg.exe";`
+  
+  Full path to your ffmpeg.exe.
+
+  Update this if ffmpeg is installed in a different location.
+
+### Changing the Output Folder
+
+The plugin saves your selected output folder in a config file, so you normally only need to choose it once, if you want to select a different output folder, edit the plugin’s config file and restart Photoshop.
+
+Typical config file location:
+
+`%APPDATA%\ProcessRecorder\config.json`
+
+  or
+  
+`%LOCALAPPDATA%\ProcessRecorder\config.json`
+
+What the config file contains:
+
+```json
+{
+  "output": "C:\\Users\\YourName\\Desktop\\ProcessRecorder"
+}
+```
 
 ---
 
