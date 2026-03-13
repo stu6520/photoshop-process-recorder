@@ -56,11 +56,11 @@ Copy the **ProcessRecorder** folder to:
 
 💡 The exact path varies by Photoshop version and installation type, if you don't already have  **Generator** folder, please create one.
 ```bash
-C:\Program Files\Adobe\Adobe Photoshop CC\Plug-Ins\Generator\
+C:\Program Files\Adobe\Adobe Photoshop 20xx\Plug-Ins\Generator\
 ```
 or
 ```bash
-C:\Program Files\Adobe\Adobe Photoshop CC\Required\Plug-Ins\Generator\
+C:\Program Files\Adobe\Adobe Photoshop 20xx\Required\Plug-Ins\Generator\
 ```
 
 Final structure:
