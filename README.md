@@ -18,10 +18,9 @@ Designed for illustrators and digital painters who want an effortless way to cap
 - Continues recording when you reopen the same PSD
 - Automatically exports an MP4 timelapse when the file is closed
 - Keeps adding to the same timelapse each time you reopen and close the file
-- Renames the output folder if the PSD is saved or renamed
+- Auto renames the output folder if the PSD is saved or renamed
 - Supports recording multiple open files at the same time
 - Runs quietly in the background with no pop-ups or UI
-- Half-size capture to reduce storage use
 
 ---
 
@@ -29,8 +28,9 @@ Designed for illustrators and digital painters who want an effortless way to cap
 
 Tested and verified with:
 
-• Adobe Photoshop CC 2014  
-• Windows 10  
+• Adobe Photoshop CC 2014 / Adobe Photoshop CC 2026
+
+• Windows 10 / Windows 11  
 
 The plugin uses Photoshop Generator and may work on other CC versions.  
 Compatibility may vary depending on Generator behavior and installation type.
@@ -56,12 +56,13 @@ Copy the **ProcessRecorder** folder to:
 
 💡 The exact path varies by Photoshop version and installation type, if you don't already have  **Generator** folder, please create one.
 ```bash
-C:\Program Files\Adobe\Adobe Photoshop CC\Required\Plug-Ins\Generator\
+C:\Program Files\Adobe\Adobe Photoshop CC\Plug-Ins\Generator\
 ```
 or
 ```bash
-C:\Program Files\Adobe\Adobe Photoshop CC\Plug-Ins\Generator\
+C:\Program Files\Adobe\Adobe Photoshop CC\Required\Plug-Ins\Generator\
 ```
+
 Final structure:
 ```bash
 Generator/
@@ -85,7 +86,7 @@ Download:
 
 Extract to:
 ```bash
-C:\ffmpeg\
+C:\
 ```
 You should have:
 ```bash
