@@ -32,7 +32,9 @@ var exportingDocs = {};           // docId -> true while ffmpeg export is runnin
 var conversionChains = {};        // docId -> promise chain for per-frame ffmpeg conversion
 var pendingConversions = {};      // docId -> count of active conversions
 var pendingExportFolders = {};    // docId -> folder awaiting export after conversion
+var pendingExportSizes = {};      // docId -> { width, height } for final normalization/export
 var docInitialized = {};          // docId -> first frame already attempted
+var trackedWithoutCapture = {};    // docId -> existing frame folder tracked without new capture
 
 // ---- Helpers ----
 function ensureDir(dir) {
@@ -424,6 +426,8 @@ function clearDocState(docId) {
   delete conversionChains[docId];
   delete pendingConversions[docId];
   delete pendingExportFolders[docId];
+  delete pendingExportSizes[docId];
+  delete trackedWithoutCapture[docId];
   delete docInitialized[docId];
 }
 
@@ -539,60 +543,141 @@ function buildFitFilter(inputWidth, inputHeight, targetWidth, targetHeight) {
     targetWidth + ":" + targetHeight + ":(ow-iw)/2:(oh-ih)/2:black";
 }
 
-function normalizeExistingFrames(docId, folder, targetSize) {
-  return createPromise(function (resolve) {
-    if (!fs.existsSync(FFMPEG)) {
-      resolve();
-      return;
-    }
+function buildNormalizeFilter(targetWidth, targetHeight) {
+  return "scale=" + targetWidth + ":" + targetHeight +
+    ":force_original_aspect_ratio=decrease,pad=" +
+    targetWidth + ":" + targetHeight + ":(ow-iw)/2:(oh-ih)/2:black";
+}
 
+function replaceNormalizedFrames(folder) {
+  var files = fs.readdirSync(folder);
+  var i;
+  var src;
+  var dst;
+
+  for (i = 0; i < files.length; i++) {
+    if (/^normalized_\d{6}\.jpg$/i.test(files[i])) {
+      dst = path.join(folder, files[i].replace(/^normalized_/i, "frame_"));
+      src = path.join(folder, files[i]);
+      if (fs.existsSync(dst)) {
+        fs.unlinkSync(dst);
+      }
+      fs.renameSync(src, dst);
+    }
+  }
+}
+
+function getFrameFiles(folder) {
+  try {
+    return fs.readdirSync(folder).filter(function (name) {
+      return /^frame_\d{6}\.jpg$/i.test(name);
+    }).sort();
+  } catch (e) {
+    return [];
+  }
+}
+
+function readJpegSize(filePath) {
+  try {
+    var buffer = fs.readFileSync(filePath);
+    var offset = 2;
+
+    if (buffer.length < 4 || buffer[0] !== 0xFF || buffer[1] !== 0xD8) return null;
+
+    while (offset + 9 < buffer.length) {
+      if (buffer[offset] !== 0xFF) {
+        offset += 1;
+        continue;
+      }
+
+      var marker = buffer[offset + 1];
+      if (marker === 0xD8 || marker === 0xD9) {
+        offset += 2;
+        continue;
+      }
+
+      if (offset + 4 > buffer.length) break;
+
+      var length = buffer.readUInt16BE(offset + 2);
+      if (length < 2 || offset + 2 + length > buffer.length) break;
+
+      if ((marker >= 0xC0 && marker <= 0xC3) || (marker >= 0xC5 && marker <= 0xC7) || (marker >= 0xC9 && marker <= 0xCB) || (marker >= 0xCD && marker <= 0xCF)) {
+        return {
+          width: buffer.readUInt16BE(offset + 7),
+          height: buffer.readUInt16BE(offset + 5)
+        };
+      }
+
+      offset += 2 + length;
+    }
+  } catch (e) {
+    return null;
+  }
+
+  return null;
+}
+
+function getTargetFrameSize(folder, preferredSize) {
+  if (preferredSize && preferredSize.width && preferredSize.height) return preferredSize;
+
+  var frames = getFrameFiles(folder);
+  if (!frames.length) return null;
+
+  return readJpegSize(path.join(folder, frames[0]));
+}
+
+function getMismatchedFrameFiles(folder, targetSize) {
+  var frames = getFrameFiles(folder);
+  var mismatched = [];
+  var i;
+
+  for (i = 0; i < frames.length; i++) {
+    var size = readJpegSize(path.join(folder, frames[i]));
+    if (!size || size.width !== targetSize.width || size.height !== targetSize.height) {
+      mismatched.push(frames[i]);
+    }
+  }
+
+  return mismatched;
+}
+
+function normalizeSingleFrame(docId, folder, frameName, targetSize) {
+  return createPromise(function (resolve) {
+    var outputName = 'normalized_' + frameName;
     var args = [
-      "-y",
-      "-loglevel", "error",
-      "-pattern_type", "glob",
-      "-i", "frame_*.jpg",
-      "-vf", buildFitFilter(targetSize.width, targetSize.height, targetSize.width, targetSize.height),
-      "-q:v", String(JPG_QUALITY),
-      "normalized_%06d.jpg"
+      '-y',
+      '-loglevel', 'error',
+      '-i', frameName,
+      '-vf', buildNormalizeFilter(targetSize.width, targetSize.height),
+      '-q:v', String(JPG_QUALITY),
+      outputName
     ];
     var child = cp.spawn(FFMPEG, args, { cwd: folder, windowsHide: true });
-    var stderr = "";
+    var stderr = '';
 
-    child.stderr.on("data", function (chunk) {
+    child.stderr.on('data', function (chunk) {
       stderr += chunk.toString();
     });
 
-    child.on("error", function (err) {
-      log("Frame normalization spawn error:", JSON.stringify({ docId: docId, error: String(err) }));
+    child.on('error', function (err) {
+      log('Frame normalization spawn error:', JSON.stringify({ docId: docId, frame: frameName, error: String(err) }));
       resolve();
     });
 
-    child.on("close", function (code) {
-      var files;
-      var i;
-      var src;
-      var dst;
-
+    child.on('close', function (code) {
       if (code !== 0) {
-        log("Frame normalization error:", JSON.stringify({ docId: docId, code: code, stderr: stderr.trim() }));
+        log('Frame normalization error:', JSON.stringify({ docId: docId, frame: frameName, code: code, stderr: stderr.trim() }));
         resolve();
         return;
       }
 
       try {
-        files = fs.readdirSync(folder);
-        for (i = 0; i < files.length; i++) {
-          if (/^normalized_\d{6}\.jpg$/i.test(files[i])) {
-            dst = path.join(folder, files[i].replace(/^normalized_/i, "frame_"));
-            src = path.join(folder, files[i]);
-            if (fs.existsSync(dst)) {
-              fs.unlinkSync(dst);
-            }
-            fs.renameSync(src, dst);
-          }
-        }
+        var src = path.join(folder, outputName);
+        var dst = path.join(folder, frameName);
+        if (fs.existsSync(dst)) fs.unlinkSync(dst);
+        fs.renameSync(src, dst);
       } catch (e) {
-        log("Frame normalization finalize error:", e);
+        log('Frame normalization finalize error:', e);
       }
 
       resolve();
@@ -600,14 +685,60 @@ function normalizeExistingFrames(docId, folder, targetSize) {
   });
 }
 
+function normalizeSelectedFrames(docId, folder, targetSize, frameNames) {
+  var chain = adoptPromiseLike();
+  var i;
+
+  for (i = 0; i < frameNames.length; i++) {
+    (function (frameName) {
+      chain = chain.then(function () {
+        return normalizeSingleFrame(docId, folder, frameName, targetSize);
+      });
+    }(frameNames[i]));
+  }
+
+  return chain;
+}
+
+function normalizeFrames(docId, folder, targetSize) {
+  return createPromise(function (resolve) {
+    var effectiveTarget = getTargetFrameSize(folder, targetSize);
+    var mismatchedFrames;
+
+    if (!effectiveTarget || !effectiveTarget.width || !effectiveTarget.height) {
+      resolve();
+      return;
+    }
+
+    if (!fs.existsSync(FFMPEG)) {
+      resolve();
+      return;
+    }
+
+    mismatchedFrames = getMismatchedFrameFiles(folder, effectiveTarget);
+    if (!mismatchedFrames.length) {
+      resolve();
+      return;
+    }
+
+    normalizeSelectedFrames(docId, folder, effectiveTarget, mismatchedFrames).then(function () {
+      resolve();
+    }).catch(function (e) {
+      log('Frame normalization queue error:', e);
+      resolve();
+    });
+  });
+}
+
 function maybeExportAfterConversions(docId) {
   var folder = pendingExportFolders[docId];
+  var targetSize = pendingExportSizes[docId];
   if (!folder) return;
   if (pendingConversions[docId] > 0) return;
 
   delete pendingExportFolders[docId];
-  clearDocState(docId);
-  exportVideo(folder, function () {
+  exportVideo(folder, targetSize, function () {
+    clearDocState(docId);
     delete exportingDocs[docId];
   });
 }
@@ -669,7 +800,7 @@ function queueFrameConversion(docId, folder, pixmap, outPath) {
   pendingConversions[docId] = (pendingConversions[docId] || 0) + 1;
   conversionChains[docId] = adoptPromiseLike(conversionChains[docId]).then(function () {
     if (shouldNormalizeExisting) {
-      return normalizeExistingFrames(docId, folder, targetSize).then(function () {
+      return normalizeFrames(docId, folder, targetSize).then(function () {
         return convertPixmapToJpg(docId, folder, pixmap, outPath, targetSize);
       });
     }
@@ -690,8 +821,9 @@ function queueFrameConversion(docId, folder, pixmap, outPath) {
 }
 
 
-function getOrCreateDocFolder(generator, docId) {
+function getOrCreateDocFolder(generator, docId, allowCreate) {
   if (!outputFolder) return adoptPromiseLike(null);
+  if (typeof allowCreate === "undefined") allowCreate = true;
 
   return adoptPromiseLike(generator.getDocumentInfo(docId)).catch(function (e) {
     log("getDocumentInfo error, using fallback document name:", docId, e);
@@ -699,21 +831,37 @@ function getOrCreateDocFolder(generator, docId) {
   }).then(function (info) {
     var docName = getDocName(info, docId);
     var existing = docFolders[docId];
+    var firstFolder;
+    var firstFrameSize;
 
     docResolutions[docId] = getDocResolution(info);
 
     if (!existing) {
-      var firstFolder = path.join(outputFolder, docName);
+      firstFolder = path.join(outputFolder, docName);
 
       if (shouldUseFallbackPath(path.join(firstFolder, "frame_000001.jpg"))) {
         firstFolder = getFallbackFolder(docId);
       }
 
-      ensureDir(firstFolder);
-      docFolders[docId] = firstFolder;
+      if (!allowCreate && !fs.existsSync(firstFolder)) {
+        return null;
+      }
 
-      frameIndex[docId] = getMaxFrameIndex(firstFolder);
-      existing = firstFolder;
+      if (allowCreate || fs.existsSync(firstFolder)) {
+        ensureDir(firstFolder);
+        docFolders[docId] = firstFolder;
+        frameIndex[docId] = getMaxFrameIndex(firstFolder);
+        existing = firstFolder;
+      }
+    }
+
+    if (!existing) return null;
+
+    if (!docFrameSize[docId]) {
+      firstFrameSize = getTargetFrameSize(existing, null);
+      if (firstFrameSize) {
+        docFrameSize[docId] = firstFrameSize;
+      }
     }
 
     if (docName) {
@@ -725,8 +873,10 @@ function getOrCreateDocFolder(generator, docId) {
       if (existing !== correctFolder) {
         try {
           if (fs.existsSync(correctFolder)) {
-            log("Rename skipped: target folder already exists:", correctFolder);
-          } else {
+            docFolders[docId] = correctFolder;
+            existing = correctFolder;
+            frameIndex[docId] = getMaxFrameIndex(existing);
+          } else if (allowCreate) {
             fs.renameSync(existing, correctFolder);
             docFolders[docId] = correctFolder;
             existing = correctFolder;
@@ -738,6 +888,7 @@ function getOrCreateDocFolder(generator, docId) {
       }
     }
 
+    trackedWithoutCapture[docId] = frameIndex[docId] > 0;
     return existing;
   }).catch(function (e) {
     log("getOrCreateDocFolder error:", e);
@@ -745,70 +896,26 @@ function getOrCreateDocFolder(generator, docId) {
   });
 }
 
-function saveFrame(generator, docId) {
-  if (!outputFolder) return adoptPromiseLike();
-
-  return getOrCreateDocFolder(generator, docId).then(function (folder) {
-    if (!folder) return;
-
-    return generator.getDocumentPixmap(docId, {
-      scaleX: CAPTURE_SCALE,
-      scaleY: CAPTURE_SCALE,
-      clipToDocumentBounds: true
-    }).then(function (pixmap) {
-      if (!pixmap || !pixmap.pixels) {
-        log("No pixmap returned for doc:", docId);
-        return;
-      }
-
-      if (!pixmap.width || !pixmap.height) {
-        log("Skipping zero-sized pixmap:", JSON.stringify({ docId: docId, width: pixmap.width, height: pixmap.height }));
-        return;
-      }
-
-      var h = hashPixels(pixmap.pixels);
-      if (lastHash[docId] === h) return;
-
-      var next = (frameIndex[docId] || 0) + 1;
-      var frameBaseName = "frame_" + pad(next, 6);
-      var activeFolder = folder;
-      var jpgName = frameBaseName + ".jpg";
-
-      if (shouldUseFallbackPath(path.join(activeFolder, jpgName))) {
-        activeFolder = switchToFallbackFolder(docId, activeFolder);
-      }
-
-      ensureDir(activeFolder);
-
-      var jpgPath = path.join(activeFolder, jpgName);
-      frameIndex[docId] = next;
-      frameExtension[docId] = "jpg";
-      lastHash[docId] = h;
-      queueFrameConversion(docId, activeFolder, pixmap, jpgPath);
-    }).catch(function (e) {
-      log("getDocumentPixmap error:", e);
-    });
-  });
-}
-
 function exportAndCleanup(docId) {
   var folder = docFolders[docId];
+  var targetSize = getTargetFrameSize(folder, docFrameSize[docId]);
   if (!folder || exportingDocs[docId]) return;
 
   exportingDocs[docId] = true;
+  pendingExportSizes[docId] = targetSize;
 
   if (pendingConversions[docId] > 0) {
     pendingExportFolders[docId] = folder;
     return;
   }
 
-  clearDocState(docId);
-  exportVideo(folder, function () {
+  exportVideo(folder, targetSize, function () {
+    clearDocState(docId);
     delete exportingDocs[docId];
   });
 }
 
-function exportVideo(folder, done) {
+function exportVideo(folder, targetSize, done) {
   if (!folder || !fs.existsSync(folder)) {
     if (done) done();
     return;
@@ -834,32 +941,46 @@ function exportVideo(folder, done) {
     return;
   }
 
-  log("Exporting video:", JSON.stringify({ folder: folder, ext: frameExt }));
+  function runExport() {
+    log("Exporting video:", JSON.stringify({ folder: folder, ext: frameExt }));
 
-  var cmd =
-    '"' + FFMPEG + '"' +
-    ' -y' +
-    ' -framerate ' + FPS +
-    ' -start_number 1' +
-    ' -i frame_%06d.' + frameExt +
-    ' -vf "crop=iw-mod(iw\\,2):ih-mod(ih\\,2)"' +
-    ' -c:v libx264' +
-    ' -preset slow' +
-    ' -crf 18' +
-    ' -pix_fmt yuv420p' +
-    ' -movflags +faststart' +
-    ' output.mp4';
+    var cmd =
+      '"' + FFMPEG + '"' +
+      ' -y' +
+      ' -framerate ' + FPS +
+      ' -start_number 1' +
+      ' -i frame_%06d.' + frameExt +
+      ' -vf "crop=iw-mod(iw\\,2):ih-mod(ih\\,2)"' +
+      ' -c:v libx264' +
+      ' -preset slow' +
+      ' -crf 18' +
+      ' -pix_fmt yuv420p' +
+      ' -movflags +faststart' +
+      ' output.mp4';
 
-  cp.exec(cmd, { cwd: folder }, function (err, stdout, stderr) {
-    if (stdout) log(stdout);
-    if (stderr) log(stderr);
-    if (err) {
-      log("Export error:", err);
-    } else {
-      log("Video exported:", path.join(folder, "output.mp4"));
-    }
-    if (done) done();
-  });
+    cp.exec(cmd, { cwd: folder }, function (err, stdout, stderr) {
+      if (stdout) log(stdout);
+      if (stderr) log(stderr);
+      if (err) {
+        log("Export error:", err);
+      } else {
+        log("Video exported:", path.join(folder, "output.mp4"));
+      }
+      if (done) done();
+    });
+  }
+
+  if (frameExt === "jpg" && targetSize && targetSize.width && targetSize.height) {
+    normalizeFrames("export", folder, targetSize).then(function () {
+      runExport();
+    }).catch(function (e) {
+      log("Final frame normalization error:", e);
+      runExport();
+    });
+    return;
+  }
+
+  runExport();
 }
 
 function checkClosedDocuments(generator) {
@@ -873,6 +994,7 @@ function checkClosedDocuments(generator) {
 
     for (i = 0; i < openDocIds.length; i++) {
       stillOpen[String(openDocIds[i])] = true;
+      getOrCreateDocFolder(generator, openDocIds[i], false);
     }
 
     var trackedIds = Object.keys(docFolders);
@@ -906,9 +1028,9 @@ function init(generator) {
           checkClosedDocuments(generator);
           return;
         }
+        getOrCreateDocFolder(generator, docId, false);
 
         if (evt && evt.metaDataOnly === true) {
-          getOrCreateDocFolder(generator, docId);
           checkClosedDocuments(generator);
           return;
         }
@@ -919,7 +1041,14 @@ function init(generator) {
         }
 
         if (!docInitialized[docId]) {
+          if (trackedWithoutCapture[docId] && frameIndex[docId] > 0) {
+            changeCount[docId] = 0;
+            checkClosedDocuments(generator);
+            return;
+          }
+
           docInitialized[docId] = true;
+          trackedWithoutCapture[docId] = false;
           changeCount[docId] = 0;
           saveFrame(generator, docId);
           checkClosedDocuments(generator);
@@ -944,14 +1073,22 @@ function init(generator) {
 
     generator.onPhotoshopEvent("imageChanged", onChanged);
     generator.onPhotoshopEvent("documentChanged", onChanged);
-    generator.onPhotoshopEvent("currentDocumentChanged", function () {
+    generator.onPhotoshopEvent("currentDocumentChanged", function (evt) {
+      var docId = getEventDocId(evt);
+      if (docId) {
+        getOrCreateDocFolder(generator, docId, false);
+      }
       checkClosedDocuments(generator);
     });
     checkClosedDocuments(generator);
+    setInterval(function () {
+      checkClosedDocuments(generator);
+    }, 2000);
   });
 }
 
 exports.init = init;
+
 
 
 
