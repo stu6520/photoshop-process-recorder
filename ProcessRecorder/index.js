@@ -465,6 +465,51 @@ function detectFrameExtension(folder) {
   return "jpg";
 }
 
+function readJpegSize(filePath) {
+  try {
+    var buffer = fs.readFileSync(filePath);
+    var offset = 2;
+
+    if (buffer.length < 4 || buffer[0] !== 0xFF || buffer[1] !== 0xD8) return null;
+
+    while (offset + 9 < buffer.length) {
+      if (buffer[offset] !== 0xFF) {
+        offset += 1;
+        continue;
+      }
+
+      var marker = buffer[offset + 1];
+      if (marker === 0xD8 || marker === 0xD9) {
+        offset += 2;
+        continue;
+      }
+
+      if (offset + 4 > buffer.length) break;
+
+      var length = buffer.readUInt16BE(offset + 2);
+      if (length < 2 || offset + 2 + length > buffer.length) break;
+
+      if ((marker >= 0xC0 && marker <= 0xC3) || (marker >= 0xC5 && marker <= 0xC7) || (marker >= 0xC9 && marker <= 0xCB) || (marker >= 0xCD && marker <= 0xCF)) {
+        return {
+          width: buffer.readUInt16BE(offset + 7),
+          height: buffer.readUInt16BE(offset + 5)
+        };
+      }
+
+      offset += 2 + length;
+    }
+  } catch (e) {
+    return null;
+  }
+
+  return null;
+}
+
+function getFirstFrameSize(folder) {
+  if (!folder) return null;
+  return readJpegSize(path.join(folder, 'frame_000001.jpg'));
+}
+
 function getDocName(info, docId) {
   var filePath = info && info.file ? info.file : null;
   var rawName = null;
@@ -714,6 +759,9 @@ function getOrCreateDocFolder(generator, docId) {
       docFolders[docId] = firstFolder;
 
       frameIndex[docId] = getMaxFrameIndex(firstFolder);
+      if (!docFrameSize[docId] && frameIndex[docId] > 0) {
+        docFrameSize[docId] = getFirstFrameSize(firstFolder);
+      }
       existing = firstFolder;
     }
 
@@ -732,6 +780,9 @@ function getOrCreateDocFolder(generator, docId) {
             docFolders[docId] = correctFolder;
             existing = correctFolder;
             frameIndex[docId] = getMaxFrameIndex(existing);
+            if (!docFrameSize[docId] && frameIndex[docId] > 0) {
+              docFrameSize[docId] = getFirstFrameSize(existing);
+            }
           }
         } catch (e) {
           log("Folder rename error:", e);
