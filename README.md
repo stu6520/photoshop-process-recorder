@@ -1,11 +1,15 @@
 # Photoshop Process Recorder
 
-<video src="assets/tutorial.mp4" controls width="600"></video>
-
+<p align="left">
+  <img src="assets/preview.gif" width="360" alt="Preview GIF">
+</p>
 
 <p align="left">
-  <img src="assets/preview.gif" width="300">
+  <a href="https://youtu.be/qtncWqUeeOw">
+    <img src="https://img.youtube.com/vi/qtncWqUeeOw/hqdefault.jpg" width="480" alt="Watch the full tutorial on YouTube">
+  </a>
 </p>
+
 
 A lightweight Photoshop Generator plugin that records your drawing process and automatically exports a timelapse video when you close the file.
 
