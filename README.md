@@ -4,9 +4,11 @@
   <img src="assets/preview.gif" width="360" alt="Preview GIF">
 </p>
 
+
+### Install guide(click the thumbnail)
 <p align="left">
   <a href="https://youtu.be/qtncWqUeeOw">
-    <img src="https://img.youtube.com/vi/qtncWqUeeOw/hqdefault.jpg" width="480" alt="Watch the full tutorial on YouTube">
+    <img src="https://img.youtube.com/vi/qtncWqUeeOw/maxresdefault.jpg" width="720" alt="Watch the full tutorial on YouTube">
   </a>
 </p>
 
