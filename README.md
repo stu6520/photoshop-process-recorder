@@ -1,5 +1,8 @@
 # Photoshop Process Recorder
 
+<video src="assets/tutorial.mp4" controls width="600"></video>
+
+
 <p align="left">
   <img src="assets/preview.gif" width="300">
 </p>
