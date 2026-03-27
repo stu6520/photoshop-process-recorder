@@ -7,7 +7,7 @@ var cp = require("child_process");
 var PromiseCompat = typeof Promise !== "undefined" ? Promise : null;
 
 // ---- Settings ----
-var THRESHOLD_STROKES = 5;
+var THRESHOLD_STROKES = 3;
 var CAPTURE_SCALE = 0.5;    // 1.0 = full size, 0.5 = half size
 var FPS = 12;
 var MAX_WINDOWS_PATH = 240;
@@ -658,13 +658,64 @@ function maybeExportAfterConversions(docId) {
   });
 }
 
+function getOpaquePackedPixmapBuffer(pixmap) {
+  var width = pixmap && pixmap.width;
+  var height = pixmap && pixmap.height;
+  var source = pixmap && pixmap.pixels;
+  var rowBytes = pixmap && pixmap.rowBytes ? pixmap.rowBytes : width * 4;
+  var packed;
+  var y;
+  var x;
+  var srcOffset;
+  var dstOffset;
+  var a;
+  var invA;
+  var r;
+  var g;
+  var b;
+
+  if (!source || !width || !height) return null;
+
+  packed = new Buffer(width * height * 3);
+
+  for (y = 0; y < height; y++) {
+    for (x = 0; x < width; x++) {
+      srcOffset = y * rowBytes + x * 4;
+      dstOffset = (y * width + x) * 3;
+
+      if (srcOffset + 3 >= source.length) {
+        return null;
+      }
+
+      a = source[srcOffset];
+      r = source[srcOffset + 1];
+      g = source[srcOffset + 2];
+      b = source[srcOffset + 3];
+
+      if (a !== 255) {
+        invA = 255 - a;
+        r = Math.round((r * a + 255 * invA) / 255);
+        g = Math.round((g * a + 255 * invA) / 255);
+        b = Math.round((b * a + 255 * invA) / 255);
+      }
+
+      packed[dstOffset] = r;
+      packed[dstOffset + 1] = g;
+      packed[dstOffset + 2] = b;
+    }
+  }
+
+  return packed;
+}
+
 function convertPixmapToJpg(docId, folder, pixmap, outPath, targetSize) {
   return createPromise(function (resolve) {
+    var packedPixels = getOpaquePackedPixmapBuffer(pixmap);
     var args = [
       "-y",
       "-loglevel", "error",
       "-f", "rawvideo",
-      "-pixel_format", "argb",
+      "-pixel_format", "rgb24",
       "-video_size", pixmap.width + "x" + pixmap.height,
       "-i", "-",
       "-frames:v", "1",
@@ -672,8 +723,23 @@ function convertPixmapToJpg(docId, folder, pixmap, outPath, targetSize) {
       "-q:v", String(JPG_QUALITY),
       path.basename(outPath)
     ];
-    var child = cp.spawn(FFMPEG, args, { cwd: folder, windowsHide: true });
+    var child;
     var stderr = "";
+
+    if (!packedPixels) {
+      log("Frame conversion buffer packing error:", JSON.stringify({
+        docId: docId,
+        output: outPath,
+        width: pixmap.width,
+        height: pixmap.height,
+        rowBytes: pixmap.rowBytes,
+        pixelsLength: pixmap.pixels ? pixmap.pixels.length : 0
+      }));
+      resolve(false);
+      return;
+    }
+
+    child = cp.spawn(FFMPEG, args, { cwd: folder, windowsHide: true });
 
     child.stderr.on("data", function (chunk) {
       stderr += chunk.toString();
@@ -698,7 +764,7 @@ function convertPixmapToJpg(docId, folder, pixmap, outPath, targetSize) {
       log("Frame conversion stdin error:", JSON.stringify({ docId: docId, output: outPath, error: String(err) }));
     });
 
-    child.stdin.end(pixmap.pixels);
+    child.stdin.end(packedPixels);
   });
 }
 
